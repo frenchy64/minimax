@@ -7,14 +7,16 @@
 ;  (Vec (Vec (U Move ':empty))))
 
 ;(defalias Action
-;  '{:x Int
-;    :y Int
+;  '{:x Int     ;; should be :row
+;    :y Int     ;; should be :column
 ;    :move Move})
 
 ;(defalias Node
 ;  '{:state State
 ;    :player Move
-;    :utility  Int})
+;    :utility  Int
+;    :alpha Int
+;    :beta Int})
 
 ; (Set Move)
 (def moves #{:x :o})
@@ -30,6 +32,7 @@
 ; Node -> (Set Action)
 (defn actions [node]
   (let [state (:state node)
+        _ (assert (vector? state) node)
         player (:player node)]
     (set
       (for [i (range (count state))
@@ -146,12 +149,16 @@
    (max-or-min-value {:state state
                       :action nil
                       :player player
-                      :utility 0})))
+                      :utility 0
+                      :alpha Long/MIN_VALUE
+                      :beta Long/MAX_VALUE})))
 
+; (Map (U Move ':draw) Integer)
 (def utilites {:x    1
                :draw 0
                :o    -1})
 
+; Node -> Integer
 (defn utility [node]
   {:post [(integer? %)]}
   (let [i (utilites (terminal node))]
@@ -193,34 +200,95 @@
                            [:empty :x     :empty]
                            [:x :empty     :empty]]}))))
 
-
+; Node Action -> Node
 (defn apply-action [node action]
   (-> node
       (assoc :action action)
-      (update :player {:x :o
-                       :o :x})
-      (update-in [:state (:x action) (:y action)] (:move action))))
+      (update :player {:x :o, :o :x})
+      (assoc-in [:state (:x action) (:y action)] (:move action))))
 
 ; Node -> '[Int (U nil Action)]
 (defn max-or-min-value [node]
-  (let [[infinity choice] ({:x [Long/MAX_VALUE max]
-                            :o [Long/MIN_VALUE min]}
-                           (:player node))]
+  {:post [(vector? %)]}
+  (let [[infinity choice compare-choice best-move-key best-opponent-move-key]
+        ({:x [Long/MIN_VALUE max >= :alpha :beta]
+          :o [Long/MAX_VALUE min <= :beta  :alpha]}
+         (:player node))]
+    (assert (integer? infinity))
+    (assert (ifn? choice))
+    ;(prn node)
     (cond (terminal node) [(utility node) nil]
           :else (loop [[v best] [infinity nil]
-                       a (actions (:state node))]
+                       ;; set of possible legal actions for the current player
+                       ;; :- (U nil (Coll Action))
+                       a (actions node)
+                       ;; the best utility gained so far for the current player
+                       ;; :- Integer
+                       best-self-move (best-move-key node)]
+                  (prn "best-self-move" best-self-move)
+                  (prn "best-opponent-move-key" (best-opponent-move-key node))
+                  (prn "player" (:player node))
                   (if (empty? a)
                     [v best]
-                    (recur (let [action (first a)
-                                 n (max-or-min-value (apply-action node action))
-                                 c (choice v n)]
-                             [c
-                              ({v best
-                                n action}
-                               c)])
-                           (next a)))))))
+                    (if (compare-choice v (best-opponent-move-key node))
+                      [v best]
+                      (recur (let [action (first a)
+                                   _ (prn action)
+                                   [n _] (max-or-min-value 
+                                           (assoc (apply-action node action)
+                                                  ;; the other stays the same
+                                                  best-move-key best-self-move))
+                                   c (choice v n)]
+                               [c
+                                ;; choose the action corresponding to the best choice.
+                                ;; favour the new choice, as `best` could be nil.
+                                ((into {} [[v best], [n action]])
+                                 c)])
+                             (next a)
+                             (choice best-self-move v))))))))
 
 (deftest minimax-test
-  (is (minimax-decision [[:empty :empty :empty]
+  (is (= [1 nil]
+         (minimax-decision [[:x :x :x]
+                            [:x :x :x]
+                            [:x :x :x]])))
+  (is (= [-1 nil]
+         (minimax-decision [[:o :x :o]
+                            [:x :o :o]
+                            [:x :o :o]])))
+  (is (= [1 {:x 1
+             :y 1
+             :move :x}]
+         (minimax-decision [[:o :x     :x]
+                            [:x :empty :o]
+                            [:x :o     :o]]
+                           :x)))
+  (is (= [-1 {:x 1
+              :y 1
+              :move :o}]
+         (minimax-decision [[:o :x     :x]
+                            [:x :empty :o]
+                            [:x :o     :o]]
+                           :o)))
+  (is (= [1 {:x 0
+             :y 2
+             :move :x}]
+         (minimax-decision [[:o :x     :empty]
+                            [:x :x :o]
+                            [:x :o     :o]]
+                           :x)))
+  (is (minimax-decision [[:x :empty :empty]
+                         [:o :empty :o]
+                         [:x :empty :empty]]))
+  #_(is (minimax-decision [[:empty :empty :empty]
                          [:empty :empty :empty]
                          [:empty :empty :empty]])))
+
+(terminal {:state [[:empty :empty :empty]
+                   [:empty :empty :empty]
+                   [:empty :empty :empty]]})
+
+(actions {:state [[:empty :empty :empty]
+                  [:empty :empty :empty]
+                  [:empty :empty :empty]]
+          :player :o})
