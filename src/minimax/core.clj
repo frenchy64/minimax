@@ -1,5 +1,6 @@
 (ns minimax.core
-  (:use [clojure.test]))
+  (:use [clojure.test])
+  (:require [clojure.pprint :refer [pprint]]))
 
 ;(defalias Move (U ':x ':o))
 
@@ -218,18 +219,27 @@
     (assert (ifn? choice))
     ;(prn node)
     (cond (terminal node) [(utility node) nil]
-          :else (loop [[v best] [infinity nil]
+          :else (loop [;; - v      best utility so far for current player (defaults to the worst utility)
+                       ;; - best   the next move that goes towards the best utility for the current player,
+                       ;;          defaults to nil
+                       [v best] [infinity nil]
                        ;; set of possible legal actions for the current player
                        ;; :- (U nil (Coll Action))
                        a (actions node)
                        ;; the best utility gained so far for the current player
                        ;; :- Integer
-                       best-self-move (best-move-key node)]
-                  (prn "best-self-move" best-self-move)
-                  (prn "best-opponent-move-key" (best-opponent-move-key node))
-                  (prn "player" (:player node))
+                       best-self-move (best-move-key node)] 
+                  ;(pprint (:state node))
+                  ;(prn "testing action" (first a))
+                  ;(prn "best-self-move" best-self-move)
+                  ;(prn "best-opponent-move-key" (best-opponent-move-key node))
+                  ;(prn "player" (:player node))
+                  (prn "moved" (some->> a first (apply-action node) :state))
                   (if (empty? a)
                     [v best]
+                    ;; if we have found a move that is great for us, but means
+                    ;; the opponent will have to choose a unoptimal move, then we
+                    ;; can prune this choice.
                     (if (compare-choice v (best-opponent-move-key node))
                       [v best]
                       (recur (let [action (first a)
@@ -284,7 +294,7 @@
                          [:empty :empty :empty]
                          [:empty :empty :empty]])))
 
-(terminal {:state [[:empty :empty :empty]
+#_#_(terminal {:state [[:empty :empty :empty]
                    [:empty :empty :empty]
                    [:empty :empty :empty]]})
 
